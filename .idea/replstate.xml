@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ReplState" timestamp="1421460796911">{:repl-history {:ide [], :local [&quot;(show 1 1 1 2)&quot; &quot;(barbershop.core/show 1 1 1 2)&quot; &quot;(clojure.repl/namespace-doc)&quot; &quot;*ns*&quot; &quot;(shop 1 1 1 2)&quot; &quot;(pos? 0)&quot; &quot;()&quot; &quot;(shop 1 1 1 3)&quot; &quot;(shop 5 5 1 3)&quot; &quot;(shop 5 5 1 20)      \n      \n      &quot; &quot;(shop 5 100 1 20)      \n      \n      &quot; &quot;(shop 5 100 1 200)      \n      \n      &quot; &quot;(read-and-write)&quot; &quot;(+ 1 1)&quot;], :remote []}}</component>
+</project>
+
