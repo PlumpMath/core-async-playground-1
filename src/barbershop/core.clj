@@ -2,12 +2,15 @@
   (:require [clojure.core.async :as async]))
 
 ;; Primitives/Fundamentals:
-;;  Go block
-;;  Data channel (one direction)
-;;  Signal channel (one direction)
-;;  Alt/Alts/Select
+;;  Channels
+;;     Data channel
+;;     Signal channel
 ;;  Take & Put
+;;  Go block
+;;  Alt/Alts
 ;;  Blocking/Parking
+
+;; mention the convenience functions
 
 
 
@@ -17,9 +20,14 @@
     (println "Read: " (async/<!! my-pipe))))
 
 
+
+
 ;; You can write just about anything to a channel. Except nil. None of that.
 ;; Because nil represents reading from a closed channel.
 ;; Or the result of a go block which evaluated to nil...
+
+
+
 
 (defn try-to-write-to-zero-sized-buffer-and-wait-forever []
   (let [my-pipe (async/chan)]
@@ -28,16 +36,19 @@
 
 
 
+
+
 (defn write-and-read-with-specified-buffer-size []
-  (let [my-pipe (async/chan (async/buffer 5))]
+  (let [my-pipe (async/chan (async/sliding-buffer 1))]
     (async/>!! my-pipe "One")
     (async/>!! my-pipe "Two")
     (async/>!! my-pipe "Three")
     (async/>!! my-pipe "Four")
     (async/>!! my-pipe "Five")
-    (async/>!! my-pipe "More")
+    (async/>!! my-pipe "More")                              ;; blocked!
     
     (println "Read: " (async/<!! my-pipe))))
+
 
 
 
@@ -56,13 +67,14 @@
     (async/>!! my-pipe "Hi")))
 
 
-
+;; What do you get when you write to a channel?
 
 
 (defn go-read-and-write []
   (let [my-pipe (async/chan)]
     (async/go (println "Read: " (async/<! my-pipe)))
-    (async/>!! my-pipe "Hi")))
+    (async/go (async/>! my-pipe "Hi"))
+    (println "Hi there!!")))
 
 
 
@@ -108,7 +120,7 @@
 ;;   }(c)
 ;;   go func(c1 chan<-) {
 ;;      c1 <- 5
-;;   }
+;;   }(c)
 ;; }
 ;;
 
@@ -155,7 +167,7 @@
       chan1 ([val chan] (println "Heard from first channel"))
       chan2 ([val chan] (println "Heard from second channel")))))
 
-
+;; Example of closing channel
 
 
 (defn writing-to-one-of-several-channels []
@@ -280,6 +292,8 @@
     (async/close! quit)))
 
 
+;; Example of close! with buffer size > 0
+
 
 
 (defn its-getting-so-meta-in-here []
@@ -292,7 +306,7 @@
               (print (str "Worker " i ": doing work: " work "\n"))
               (when (not= work "quit")
                 (recur)))))))
-    (dotimes [i 100]
+    (dotimes [i 20]
       (let [c (async/<!! chans)]
         (async/go
           (async/>! c (str "--work-" i)))))
@@ -323,7 +337,8 @@
 (defmacro with-channels [bindings & body]
   (concat (list 'let) (vector bindings) body (for [p (reverse (map first (partition 2 bindings)))] (list 'async/close! p))))
 
-
+;; show an expansion of the macro...
+;; clean up macro
 
 
 ;; Testing is challenging because you don't want a thread to sleep indefinitely.
@@ -332,6 +347,7 @@
 ;;   And closed channels are 'read' immediately. So, `with-channel`...
 
 
+;; show a real-world example around alt/alts - persister?
 
 
 (defn just-a-little-deadlock-nothin-to-see-here []
@@ -360,7 +376,7 @@
           (recur (dec times)))
         (async/close! quit)))
 
-    (doseq [id (range num-barbers)]
+    (dotimes [id num-barbers]
       (async/go-loop []
         (async/alt!
 
