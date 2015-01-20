@@ -1,22 +1,6 @@
 (ns barbershop.core
   (:require [clojure.core.async :as async]))
 
-;; Channels are like queues; they're decoupled from producer and consumer.
-;; Channels are USUALLY FIFO. But, that's an implementation detail,
-;; & not guaranteed for any given channel.
-;; go blocks are decoupled from the running thread when blocked on reading
-;; or writing to channels.
-;; ANYONE can write or read from any channel!
-;; In Golang, you can type a channel as read-only or write-only. It's best to
-;; treat channels this way.
-;; A go loop won't quit until you tell it to.
-;; Dedicated channels for quitting are useful.
-;; If you want to wait/sleep/..., there's a pattern: (<! (timeout N))
-;; Testing is challenging because you don't want a thread to sleep indefinitely.
-;;   But, there's a trick; deadlocks OFTEN come from threads waiting to read
-;;   from a channel.
-;;   And closed channels are 'read' immediately. So, `with-channel`...
-
 ;; Primitives/Fundamentals:
 ;;  Go block
 ;;  Data channel (one direction)
@@ -35,11 +19,7 @@
 
 ;; You can write just about anything to a channel. Except nil. None of that.
 ;; Because nil represents reading from a closed channel.
-
-
-;; Another point - you can't say 'channel for writing to'. Whether a sewer pipe is fair or foul
-;; depends on which end you're on. The same thing goes for channels.
-
+;; Or the result of a go block which evaluated to nil...
 
 (defn try-to-write-to-zero-sized-buffer-and-wait-forever []
   (let [my-pipe (async/chan)]
@@ -68,6 +48,8 @@
 
 
 
+
+
 (defn try-to-read-and-wait-forever []
   (let [my-pipe (async/chan 1)]
     (println "Read: " (async/<!! my-pipe)) ;; Blocking...
@@ -83,9 +65,11 @@
     (async/>!! my-pipe "Hi")))
 
 
+
+
 ;; Note that within a go block, reading is <! and writing is >!. Outside, it's <!! and >!!.
-;; You'll notice the same with alt!! and alts!!. Basically, all of the blocking functions
-;; become parking functions within go blocks.
+;; You'll notice the same with alt!! and alts!!. 
+
 
 
 
@@ -116,6 +100,17 @@
     (async/>!! my-pipe "Hi 5!")))
 
 
+;;
+;; func a() {
+;;   c := make(chan int)
+;;   go func(c1 <-chan int) {
+;;      fmt.Printf("%d\n", <-c1)
+;;   }(c)
+;;   go func(c1 chan<-) {
+;;      c1 <- 5
+;;   }
+;; }
+;;
 
 ;; Always use a channel for 1 purpose in a given thread/context.
 ;; In Go, they're usually typed as read-only or write-only.
@@ -124,10 +119,10 @@
 
 
 
+
 (defn leverage-blocking-with-timeouts []
   (async/<!! (async/timeout 10000))
   (println "All done waiting!"))
-
 
 
 
@@ -141,7 +136,24 @@
 
 
     (let [[val chan] (async/alts!! chans)]
-        (println "Got value " val))))
+      (println "Got value " val))))
+
+
+
+
+(defn alt-is-better-for-distinct-meaningful-channels []
+  (let [chan1 (async/chan)
+        chan2 (async/chan)
+        chans [chan1 chan2]
+        which-one (rand-int 2)
+        chan-to-use (chans which-one)]
+    (async/go
+      (async/>! chan-to-use (str "<Channel:" which-one ">")))
+
+
+    (async/alt!!
+      chan1 ([val chan] (println "Heard from first channel"))
+      chan2 ([val chan] (println "Heard from second channel")))))
 
 
 
@@ -198,6 +210,7 @@
 
 
 ;; Channels should be used to communicate one purpose. Don't overload them.
+;; Data should generally not be split into multiple messages.
 
 
 
@@ -307,6 +320,14 @@
 ;; Sometimes, we need to close our channels!
 (defmacro with-channels [bindings & body]
   (concat (list 'let) (vector bindings) body (for [p (reverse (map first (partition 2 bindings)))] (list 'async/close! p))))
+
+
+
+
+;; Testing is challenging because you don't want a thread to sleep indefinitely.
+;;   But, there's a trick; deadlocks OFTEN come from threads waiting to read
+;;   from a channel.
+;;   And closed channels are 'read' immediately. So, `with-channel`...
 
 
 
