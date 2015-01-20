@@ -209,7 +209,8 @@
 
 
 
-;; Channels should be used to communicate one purpose. Don't overload them.
+;; A channel should be used to communicate one purpose. Don't overload it with many meanings.
+
 ;; Data should generally not be split into multiple messages.
 
 
@@ -283,14 +284,15 @@
 
 (defn its-getting-so-meta-in-here []
   (let [chans (async/chan)]
-    (doseq [i (range 10)] (let [my-chan (async/chan)]
-                            (async/go-loop []
-                              (when (async/>! chans my-chan)
-                                (let [work (async/<! my-chan)]
-                                  (print (str "Worker " i ": doing work: " work "\n"))
-                                  (when (not= work "quit")
-                                    (recur)))))))
-    (doseq [i (range 100)]
+    (dotimes [i 10]
+      (let [my-chan (async/chan)]
+        (async/go-loop []
+          (when (async/>! chans my-chan)
+            (let [work (async/<! my-chan)]
+              (print (str "Worker " i ": doing work: " work "\n"))
+              (when (not= work "quit")
+                (recur)))))))
+    (dotimes [i 100]
       (let [c (async/<!! chans)]
         (async/go
           (async/>! c (str "--work-" i)))))
