@@ -9,15 +9,19 @@
 ;;  Go block
 ;;  Alt/Alts
 ;;  Blocking/Parking
+;;  Channels -> seq functions
+;;  Patterns functions
 
-;; mention the convenience functions
+
 
 
 
 (defn write-and-read-channel-of-size-1 []
-  (let [my-pipe (async/chan 1)]
-    (async/>!! my-pipe "Hi")
-    (println "Read: " (async/<!! my-pipe))))
+  (let [my-pipe (async/chan 1)
+        write-result (async/>!! my-pipe "Hi")
+        read-result (async/<!! my-pipe)]
+    (println "Write: " write-result)
+    (println "Read: " read-result)))
 
 
 
@@ -37,18 +41,24 @@
 
 
 
+(defn try-to-read-and-wait-forever []
+  (let [my-pipe (async/chan)]
+    (println "Read: " (async/<!! my-pipe)) ;; Blocking...
+    (async/>!! my-pipe "Hi")))
+
+
+
 
 (defn write-and-read-with-specified-buffer-size []
-  (let [my-pipe (async/chan (async/sliding-buffer 1))]
+  (let [my-pipe (async/chan 5)]
     (async/>!! my-pipe "One")
     (async/>!! my-pipe "Two")
     (async/>!! my-pipe "Three")
     (async/>!! my-pipe "Four")
     (async/>!! my-pipe "Five")
-    (async/>!! my-pipe "More")                              ;; blocked!
+    (async/>!! my-pipe "More")   ;; blocked!
     
     (println "Read: " (async/<!! my-pipe))))
-
 
 
 
@@ -61,13 +71,50 @@
 
 
 
-(defn try-to-read-and-wait-forever []
+(defn you-can-specify-the-buffer-too []
+  (let [buffered-pipe   (async/chan 5)
+        same-pipe       (async/chan (async/buffer 5))
+        always-writable (async/chan (async/dropping-buffer 5))
+        also-writable   (async/chan (async/sliding-buffer 5))]
+    (async/>!! always-writable "one")
+    (async/>!! always-writable "two")
+    (async/>!! always-writable "three")
+    (async/>!! always-writable "four")
+    (async/>!! always-writable "five")
+    ;; None of the following block
+    (async/>!! always-writable "six")
+    (async/>!! always-writable "seven")
+    (async/>!! always-writable "eight")
+    (async/>!! always-writable "nine")
+    (async/>!! always-writable "ten")
+    (println "From dropping buffer: " (async/<!! always-writable))
+
+    (async/>!! also-writable "one")
+    (async/>!! also-writable "two")
+    (async/>!! also-writable "three")
+    (async/>!! also-writable "four")
+    (async/>!! also-writable "five")
+    ;; None of the following block
+    (async/>!! also-writable "six")
+    (async/>!! also-writable "seven")
+    (async/>!! also-writable "eight")
+    (async/>!! also-writable "nine")
+    (async/>!! also-writable "ten")
+    (println "From sliding buffer: " (async/<!! also-writable))))
+
+
+
+
+(defn what-happens-when-the-channels-closed []
   (let [my-pipe (async/chan 1)]
-    (println "Read: " (async/<!! my-pipe)) ;; Blocking...
-    (async/>!! my-pipe "Hi")))
+    (println "Before close, write returns: " (async/>!! my-pipe "Hi"))
+    (async/close! my-pipe)
+    (println "After close, write return: " (async/>!! my-pipe "There"))
+    (println "First read on closed pipe returns: " (async/<!! my-pipe))
+    (println "Second read on closed pipe returns: " (async/<!! my-pipe))
+    (println "And further reads return: " (async/<!! my-pipe))))
 
 
-;; What do you get when you write to a channel?
 
 
 (defn go-read-and-write []
@@ -84,10 +131,20 @@
 
 
 
+(defn go-blocks-have-return-values []
+  (let [go-rtn (async/go
+                 (println "Inside a go block!")
+                 (+ 1 2))]
+    (println "Go returned: " (async/<!! go-rtn))))
+
+
+
 
 (defn go-blocks-have-complicated-relationships-with-threads []
   (async/<!!
    (async/go
+     (print (str "before <!!, thread id =" (.getName (java.lang.Thread/currentThread)) "\n"))
+     (async/<!! (async/timeout 100))
      (print (str "before <!, thread id =" (.getName (java.lang.Thread/currentThread)) "\n"))
      (async/<! (async/timeout 100))
      (print (str "after <!, thread id =" (.getName (java.lang.Thread/currentThread)) "\n")))))
@@ -113,19 +170,26 @@
 
 
 ;;
+;; type WorkMessage struct { ... }
+;;
+;; func printIt(c <-chan WorkMessage) {
+;;   fmt.Printf("%v\n", <-c)
+;; }
+;; func writeIt(c chan<- WorkMessage) {
+;;   c <- WorkMessage{ ... }
+;; }
 ;; func a() {
-;;   c := make(chan int)
-;;   go func(c1 <-chan int) {
-;;      fmt.Printf("%d\n", <-c1)
-;;   }(c)
-;;   go func(c1 chan<-) {
-;;      c1 <- 5
-;;   }(c)
+;;   c := make(chan WorkMessage)
+;;   go printIt(c)
+;;   go writeIt(c)
 ;; }
 ;;
 
 ;; Always use a channel for 1 purpose in a given thread/context.
 ;; In Go, they're usually typed as read-only or write-only.
+
+;; Messages should be self-contained, and not split into multiple puts.
+
 ;; This also means that workers shouldn't have a state which is
 ;; modified by another thread!!
 
@@ -136,6 +200,11 @@
   (async/<!! (async/timeout 10000))
   (println "All done waiting!"))
 
+
+
+
+
+;; 'port' is a superset of 'channel'.
 
 
 
@@ -167,7 +236,7 @@
       chan1 ([val chan] (println "Heard from first channel"))
       chan2 ([val chan] (println "Heard from second channel")))))
 
-;; Example of closing channel
+
 
 
 (defn writing-to-one-of-several-channels []
@@ -204,26 +273,8 @@
         chan2 ([val ch] (println "Got value " val " from writing worker"))
         [[chan1 "3.14159268"]] :value-returned-from-alt))))
 
-;; Hmmm; value-returned-from-alt is returned regardless of whether chan1 is closed...
-;; That sounds bad...
 
 
-
-;; Note that many wonderful people can
-;; write to and read from the same pipe!
-(defn write-and-write-and-read-and-read []
-  (let [my-pipe (async/chan 1)]
-    (async/go (async/>! my-pipe "Write 1"))
-    (async/go (async/>! my-pipe "Write 2"))
-    (async/go (print (str "Read: " (async/<! my-pipe) "\n")))
-    (async/go (print (str "Read again: " (async/<!! my-pipe) "\n"))))
-  "let's wait, shall we?")
-
-
-
-;; A channel should be used to communicate one purpose. Don't overload it with many meanings.
-
-;; Data should generally not be split into multiple messages.
 
 
 
@@ -267,9 +318,17 @@
 ;; It's up to you to keep them as simple as possible.
 
 
+(defn hey-everyone-its-quittin-time--hello? []
+  (let [quit (async/chan)]
+    (dotimes [i 10]
+      (async/go
+        (async/alt!
+          quit ([val chan] (print (str "Worker " i " says: \"It's quittin' time!\"\n"))))))
+    (async/<!! (async/timeout 2000))
+    (dotimes [i 10] (async/>!! quit :quit))))
 
 
-(defn hey-everyone-its-quittin-time []
+(defn kill-the-buddha-upon-the-road []
   (let [quit (async/chan)]
     (dotimes [i 10]
       (async/go
@@ -280,19 +339,6 @@
 
 
 
-
-(defn kill-the-buddha-upon-the-road []
-  (let [quit (async/chan)]
-    (dotimes [i 10]
-      (async/go
-        (async/<! quit)
-        (print (str "Worker " i " is quitting!\n"))))
-
-    (async/<!! (async/timeout 2000))
-    (async/close! quit)))
-
-
-;; Example of close! with buffer size > 0
 
 
 
@@ -335,7 +381,12 @@
 
 ;; Sometimes, we need to close our channels!
 (defmacro with-channels [bindings & body]
-  (concat (list 'let) (vector bindings) body (for [p (reverse (map first (partition 2 bindings)))] (list 'async/close! p))))
+  `(let ~bindings
+     (async/go ~@body)
+     (async/<!! (async/timeout 3000))
+     ~(list #_ (map ?? (reverse (map first (partition 2 bindings))))))
+   (concat (list 'let) (vector bindings) body (for [p (reverse (map first (partition 2 bindings)))] (list 'async/close! p)))
+  )
 
 ;; show an expansion of the macro...
 ;; clean up macro
